@@ -7,6 +7,7 @@ This is a command-line tool to perform Over-The-Air (OTA) firmware updates on BL
 - Scan for devices by name or address.
 - Upload firmware to App partition or SPIFFS partition.
 - Optional zlib compression to reduce transfer time.
+- Optional firmware signing with RSA private key.
 - Progress bar and upload speed indication.
 - CRC16 verification for data integrity.
 
@@ -28,6 +29,12 @@ go build -o bleota-cli .
 
 # With compression (recommended for faster uploads)
 ./bleota-cli --name "YourDeviceName" --file "firmware.bin" --compress
+
+# With firmware signing
+./bleota-cli --name "YourDeviceName" --file "firmware.bin" --key "priv_key.pem"
+
+# With both compression and signing
+./bleota-cli --name "YourDeviceName" --file "firmware.bin" --compress --key "priv_key.pem"
 ```
 
 ### Options
@@ -37,6 +44,7 @@ go build -o bleota-cli .
 - `--file`: Path to the `.bin` firmware file.
 - `--spiffs`: (Optional) Use this flag if you are uploading a SPIFFS image instead of an application firmware.
 - `--compress`: (Optional) Compress the firmware with zlib before uploading to reduce transfer time.
+- `--key`: (Optional) Path to RSA private key PEM file for signing the firmware. The signature is appended to the firmware data.
 
 ## Requirements
 
@@ -58,3 +66,23 @@ upload_command = ./bleota-cli -name <device name> -file $SOURCE -compress
 ```
 
 Replace `<device name>` with your BLE device's name. This configuration allows you to upload firmware using PlatformIO's standard upload command, which will automatically use the BLE OTA method. The `-compress` flag is optional but recommended for faster transfers.
+
+To add firmware signing, include the `-key` flag:
+```ini
+upload_command = ./bleota-cli -name <device name> -file $SOURCE -compress -key priv_key.pem
+```
+
+## Firmware Signing
+
+The tool supports signing firmware with an RSA private key. The signature is computed using SHA-256 hash and RSA PKCS#1 v1.5, then appended to the firmware data before upload.
+
+**Example:**
+```bash
+# Generate a private key
+openssl genrsa -out priv_key.pem 2048
+
+# Sign and upload firmware
+./bleota-cli --name "MyDevice" --file firmware.bin --key priv_key.pem
+```
+
+The signature is appended after compression (if enabled), so the order is: read → compress → sign → upload.

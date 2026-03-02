@@ -3,7 +3,13 @@ package main
 import (
 	"bytes"
 	"compress/zlib"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
 	"encoding/binary"
+	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
@@ -65,12 +71,59 @@ func crc16(init uint16, data []byte) uint16 {
 
 var adapter = bluetooth.DefaultAdapter
 
+func signFirmware(data []byte, privateKeyPath string) ([]byte, error) {
+	// Read the private key file
+	keyData, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read private key: %v", err)
+	}
+
+	// Decode PEM block
+	block, _ := pem.Decode(keyData)
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode PEM block")
+	}
+
+	// Parse the private key
+	var privateKey *rsa.PrivateKey
+	if block.Type == "RSA PRIVATE KEY" {
+		privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse PKCS1 private key: %v", err)
+		}
+	} else if block.Type == "PRIVATE KEY" {
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse PKCS8 private key: %v", err)
+		}
+		var ok bool
+		privateKey, ok = key.(*rsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("private key is not RSA")
+		}
+	} else {
+		return nil, fmt.Errorf("unsupported key type: %s", block.Type)
+	}
+
+	// Hash the firmware data
+	hash := sha256.Sum256(data)
+
+	// Sign the hash
+	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hash[:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign data: %v", err)
+	}
+
+	return signature, nil
+}
+
 func main() {
 	deviceName := flag.String("name", "", "BLE device name")
 	deviceAddr := flag.String("address", "", "BLE device address (UUID on macOS)")
 	firmwarePath := flag.String("file", "", "Path to firmware file")
 	isSpiffs := flag.Bool("spiffs", false, "Upload to SPIFFS instead of app partition")
 	compress := flag.Bool("compress", false, "Compress firmware with zlib before uploading")
+	privateKeyPath := flag.String("key", "", "Path to private key PEM file for signing (optional)")
 	flag.Parse()
 
 	if (*deviceName == "" && *deviceAddr == "") || *firmwarePath == "" {
@@ -91,6 +144,20 @@ func main() {
 			log.Fatalf("Failed to compress firmware: %v", err)
 		}
 		fmt.Printf("Compressed to %d bytes (%.2f%% of original)\n", len(data), float64(len(data))/float64(originalSize)*100)
+	}
+
+	// Sign and append signature if private key is provided
+	if *privateKeyPath != "" {
+		fmt.Printf("Signing firmware with private key...\n")
+		signature, err := signFirmware(data, *privateKeyPath)
+		if err != nil {
+			log.Fatalf("Failed to sign firmware: %v", err)
+		}
+		fmt.Printf("Signature generated (%d bytes)\n", len(signature))
+
+		// Append signature to firmware data
+		data = append(data, signature...)
+		fmt.Printf("Total size with signature: %d bytes\n", len(data))
 	}
 
 	if err := adapter.Enable(); err != nil {
