@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/zlib"
 	"encoding/binary"
 	"errors"
 	"flag"
@@ -25,6 +27,27 @@ const (
 	SectorSize = 4096
 )
 
+func compressData(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	w := zlib.NewWriter(&buf)
+
+	_, err := w.Write(data)
+	if err != nil {
+		err := w.Close()
+		if err != nil {
+			return nil, err
+		}
+		return nil, err
+	}
+
+	err = w.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
 func crc16(init uint16, data []byte) uint16 {
 	crc := init
 	for _, b := range data {
@@ -47,6 +70,7 @@ func main() {
 	deviceAddr := flag.String("address", "", "BLE device address (UUID on macOS)")
 	firmwarePath := flag.String("file", "", "Path to firmware file")
 	isSpiffs := flag.Bool("spiffs", false, "Upload to SPIFFS instead of app partition")
+	compress := flag.Bool("compress", false, "Compress firmware with zlib before uploading")
 	flag.Parse()
 
 	if (*deviceName == "" && *deviceAddr == "") || *firmwarePath == "" {
@@ -57,6 +81,16 @@ func main() {
 	data, err := os.ReadFile(*firmwarePath)
 	if err != nil {
 		log.Fatalf("Failed to read firmware file: %v", err)
+	}
+
+	originalSize := len(data)
+	if *compress {
+		fmt.Printf("Compressing firmware (%d bytes)...\n", originalSize)
+		data, err = compressData(data)
+		if err != nil {
+			log.Fatalf("Failed to compress firmware: %v", err)
+		}
+		fmt.Printf("Compressed to %d bytes (%.2f%% of original)\n", len(data), float64(len(data))/float64(originalSize)*100)
 	}
 
 	if err := adapter.Enable(); err != nil {
