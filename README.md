@@ -39,7 +39,7 @@ go build -o bleota-cli .
 
 ### Options
 
-- `--name`: The BLE Local Name of the target device.
+- `--name`: The BLE Local Name of the target device. Supports wildcards (`*`) for pattern matching (e.g., `"MyDevice*"`).
 - `--address`: The BLE address of the target device (UUID on macOS, MAC address on Linux/Windows).
 - `--file`: Path to the `.bin` firmware file.
 - `--spiffs`: (Optional) Use this flag if you are uploading a SPIFFS image instead of an application firmware.
