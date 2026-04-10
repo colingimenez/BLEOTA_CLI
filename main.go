@@ -326,7 +326,7 @@ func (o *OTAClient) startOTA() error {
 	crc := crc16(0, buf[0:18])
 	binary.LittleEndian.PutUint16(buf[18:20], crc)
 
-	_, err := o.cmdChar.WriteWithoutResponse(buf)
+	_, err := o.cmdChar.Write(buf)
 	if err != nil {
 		return err
 	}
@@ -451,7 +451,7 @@ func (o *OTAClient) sendSector(index uint16, data []byte) error {
 			packet = append(packet, crcBuf...)
 		}
 
-		_, err := o.fwChar.WriteWithoutResponse(packet)
+		_, err := o.fwChar.Write(packet)
 		if err != nil {
 			return err
 		}
@@ -513,7 +513,7 @@ func (o *OTAClient) stopOTA() error {
 	crc := crc16(0, buf[0:18])
 	binary.LittleEndian.PutUint16(buf[18:20], crc)
 
-	_, err := o.cmdChar.WriteWithoutResponse(buf)
+	_, err := o.cmdChar.Write(buf)
 	if err != nil {
 		return err
 	}
